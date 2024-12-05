@@ -1,0 +1,254 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+# Introduction
+
+This R Notebook continues the analysis of Minnesota's Congressional District 3 election data from 2012 to 2020. We will:
+
+- Load the combined shapefile.
+- Explore and summarize the data.
+- Visualize voting trends and turnout.
+- Analyze congressional election results.
+
+
+# Libraries
+
+We start by loading the necessary libraries for spatial data manipulation and visualization.
+
+```{r, message=FALSE}
+# Load necessary libraries
+library(sf)
+library(dplyr)
+library(tmap)
+library(ggplot2)
+```
+
+# Loading the Combined Shapefile
+We load the combined shapefile for District 3 that was created in the previous steps.
+
+```{r}
+# Define the path to the combined shapefile
+output_path <- "C:/Users/Norah Alotaibi/Downloads/shp_bdry_electionresults_2012_2020/district_3_combined_2012_2020.shp"
+
+# Load the combined shapefile
+district_3_sf <- st_read(output_path)
+```
+
+# Exploring the Data
+We explore the structure and contents of the dataset to understand the available variables.
+
+```{r}
+# View structure of the data
+str(district_3_sf)
+
+# View the first few rows
+head(district_3_sf)
+
+# Summary of Total Voting
+summary(district_3_sf$TOTVOTING)
+```
+_________________________________________________________________________
+### Data Preparation
+
+#Add Turnout Rate
+We calculate the voter turnout rate for each precinct.
+
+```{r}
+# Calculate voter turnout rate
+district_3_sf <- district_3_sf %>%
+  mutate(Turnout_Rate = (TOTVOTING / REG7AM) * 100)
+```
+
+#Summarize Data
+We summarize key metrics, including total votes, turnout rates, and party performance, for each year.
+```{r}
+# Summarize data by year
+district3_summary <- district_3_sf %>%
+  group_by(Year) %>%
+  summarize(
+    Total_Voters = sum(TOTVOTING, na.rm = TRUE),
+    Total_Registered = sum(REG7AM, na.rm = TRUE),
+    Average_Turnout_Rate = mean(Turnout_Rate, na.rm = TRUE),
+    Republican_Votes = sum(USREPR, na.rm = TRUE),
+    Democratic_Votes = sum(USREPDFL, na.rm = TRUE),
+    WriteIn_Votes = sum(USREPWI, na.rm = TRUE)
+  )
+
+# View the summarized data
+print(district3_summary)
+```
+_________________________________________________________________________
+
+### Visualization
+
+#Mapping Precinct-Level Voting
+We create an interactive map to visualize total voting by precinct using the tmap package.
+```{r}
+# Set tmap to interactive view mode
+tmap_mode("view")
+
+# Interactive map showing total voting by precinct
+tm_shape(district_3_sf) +
+  tm_polygons("TOTVOTING", palette = "viridis", title = "Total Voting") +  
+  tm_layout(title = "District 3 Precinct-Level Voting")  
+```
+
+
+#Total Voting Trends
+We visualize the total number of votes cast over the years.
+```{r}
+# Plot total voting trends
+ggplot(district3_summary, aes(x = Year, y = Total_Voters)) +
+  geom_line(size = 1.2) +
+  geom_point(size = 3) +
+  labs(
+    title = "Total Voting Trends in District 3 (2012-2020)",
+    x = "Year",
+    y = "Total Votes"
+  ) +
+  theme_minimal()
+```
+
+#Party Performance Over Time
+
+We compare the performance of Republican, Democratic, and Write-In candidates.
+
+```{r}
+# Plot party performance
+ggplot(district3_summary, aes(x = Year)) +
+  geom_line(aes(y = Republican_Votes, color = "Republican"), size = 1.2) +
+  geom_line(aes(y = Democratic_Votes, color = "Democratic"), size = 1.2) +
+  geom_line(aes(y = WriteIn_Votes, color = "Write-In"), size = 1.2) +
+  geom_point(aes(y = Republican_Votes, color = "Republican"), size = 3) +
+  geom_point(aes(y = Democratic_Votes, color = "Democratic"), size = 3) +
+  geom_point(aes(y = WriteIn_Votes, color = "Write-In"), size = 3) +
+  labs(
+    title = "Congressional Election Results in District 3 (2012-2020)",
+    x = "Year",
+    y = "Votes",
+    color = "Candidate"
+  ) +
+  theme_minimal()
+```
+
+#Turnout Rate Over Time
+We visualize the average voter turnout rate for each year.
+```{r}
+# Plot average turnout rate
+ggplot(district3_summary, aes(x = Year, y = Average_Turnout_Rate)) +
+  geom_line(size = 1.2, color = "blue") +
+  geom_point(size = 3, color = "blue") +
+  labs(
+    title = "Average Turnout Rate in District 3 (2012-2020)",
+    x = "Year",
+    y = "Average Turnout Rate (%)"
+  ) +
+  theme_minimal()
+```
+
+#Export Summarized Data
+Finally, we export the summarized data for further analysis or sharing.
+```{r}
+write.csv(district3_summary, "district3_summary.csv", row.names = FALSE)
+```
+
+
+```{r}
+install.packages("spdep")
+```
+
+#Identify Missing Values
+Check for missing values in the Turnout_Rate column:
+
+```{r}
+sum(is.na(district_3_sf$Turnout_Rate))
+```
+
+#Remove Rows with Missing Values
+If you decide that rows with missing values in Turnout_Rate are not critical for your analysis, you can remove them:
+```{r}
+district_3_sf <- district_3_sf %>%
+    filter(!is.na(Turnout_Rate))
+```
+
+
+#Check for Non-Finite Values
+Identify if there are any non-finite values in Turnout_Rate:
+```{r}
+sum(!is.finite(district_3_sf$Turnout_Rate))
+```
+
+#Filter Out Non-Finite Values
+Remove any non-finite values from Turnout_Rate:
+```{r}
+district_3_sf <- district_3_sf %>%
+    filter(is.finite(Turnout_Rate))
+```
+
+
+#Spatial Analysis:
+Cluster Analysis: Identify clusters of high and low voter turnout using spatial clustering methods.
+```{r}
+library(spdep)
+coords <- st_coordinates(st_centroid(district_3_sf))
+nb <- knn2nb(knearneigh(coords, k = 5))
+lw <- nb2listw(nb, style = "W")
+district_3_sf$Moran_I <- localmoran(district_3_sf$Turnout_Rate, lw)[, "Ii"]
+
+ggplot(district_3_sf, aes(fill = Moran_I)) +
+    geom_sf() +
+    scale_fill_viridis_c() +
+    labs(title = "Spatial Clusters of Voter Turnout")
+```
+
+```{r}
+summary(district_3_sf$Turnout_Rate)
+```
+
+
+```{r}
+# Calculate percentage of votes for each party
+district_3_sf <- district_3_sf %>%
+  mutate(
+    Percent_Democratic = (USREPDFL / TOTVOTING) * 100,
+    Percent_Republican = (USREPR / TOTVOTING) * 100
+  )
+
+# Visualize percentage of votes
+ggplot(data = district_3_sf) +
+  geom_sf(aes(fill = Percent_Democratic), color = NA) +
+  scale_fill_gradient(low = "white", high = "blue", name = "Democratic (%)") +
+  labs(
+    title = "Election Results by Percentage in MN Congressional District 03",
+    subtitle = "Percentage of Votes Received by Democratic Candidates",
+    x = "Longitude",
+    y = "Latitude"
+  ) +
+  theme_minimal()
+
+# For Republican Percentage
+ggplot(data = district_3_sf) +
+  geom_sf(aes(fill = Percent_Republican), color = NA) +
+  scale_fill_gradient(low = "white", high = "red", name = "Republican (%)") +
+  labs(
+    title = "Election Results by Percentage in MN Congressional District 03",
+    subtitle = "Percentage of Votes Received by Republican Candidates",
+    x = "Longitude",
+    y = "Latitude"
+  ) +
+  theme_minimal()
+
+```
+
+
+
+
+
+
+
+
+When you save the notebook, an HTML file containing the code and output will be saved alongside it (click the *Preview* button or press *Ctrl+Shift+K* to preview the HTML file).
+
+The preview shows you a rendered HTML copy of the contents of the editor. Consequently, unlike *Knit*, *Preview* does not run any R code chunks. Instead, the output of the chunk when it was last run in the editor is displayed.

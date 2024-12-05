@@ -1,0 +1,69 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+## Introduction
+
+This R Notebook analyzes election results for Minnesota's Congressional District 3 using shapefiles from 2012 to 2020. The goal is to combine data, filter for District 3, and perform further analysis.
+
+
+```{r}
+library(sf)
+library(dplyr)
+```
+
+#Loading Data
+We define the path to the shapefiles and create a list of years for which we have data.
+
+
+```{r}
+# List of shapefiles by year
+years <- c(2012, 2014, 2016, 2018, 2020)
+base_path <- "C:/Users/Norah Alotaibi/Downloads/shp_bdry_electionresults_2012_2020"
+```
+
+#Extracting Column Names
+To ensure consistency, we extract and find the common columns across all shapefiles.
+
+```{r}
+
+# Extract column names for each shapefile
+column_names <- lapply(all_shapefiles, colnames)
+
+# Find common columns
+common_cols <- Reduce(intersect, column_names)
+
+```
+
+```{r}
+# Keep only common columns in each shapefile
+all_shapefiles <- lapply(all_shapefiles, function(gdf) gdf[, common_cols, drop = FALSE])
+
+```
+
+#Combining Shapefiles
+We combine all the shapefiles into a single dataset.
+
+```{r}
+combined_sf <- do.call(rbind, all_shapefiles)
+
+```
+
+#Filtering for District 3
+We filter the combined dataset to include only Congressional District 3.
+
+```{r}
+# Filter for District 3
+district_3_sf <- combined_sf %>% filter(CONGDIST == 3)
+
+# Save the combined dataset
+output_path <- file.path(base_path, "district_3_combined_2012_2020.shp")
+st_write(district_3_sf, output_path)
+
+```
+
+
+When you save the notebook, an HTML file containing the code and output will be saved alongside it (click the *Preview* button or press *Ctrl+Shift+K* to preview the HTML file).
+
+The preview shows you a rendered HTML copy of the contents of the editor. Consequently, unlike *Knit*, *Preview* does not run any R code chunks. Instead, the output of the chunk when it was last run in the editor is displayed.
